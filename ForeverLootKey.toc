@@ -1,0 +1,14 @@
+## Interface: 16001
+## Title: Forever LootKey
+## Notes: One key loots the nearest corpse or quest object. Instant auto loot and a highlight on nearby interactable objects.
+## Notes-ruRU: Одна клавиша лутает ближайший труп или квестовый предмет. Мгновенный автолут и подсветка объектов рядом.
+## Author: olegsuv
+## Version: @project-version@
+## SavedVariables: ForeverLootKeyDB
+## IconTexture: Interface\Icons\INV_Misc_Bag_10
+## X-License: MIT
+## X-Website: https://github.com/olegsuv/ForeverLootKey
+
+Locales\enUS.lua
+Locales\ruRU.lua
+ForeverLootKey.lua
