@@ -1,23 +1,39 @@
 name: Release
 
+# A new version is released when the top "## x.y.z" heading in CHANGELOG.md
+# changes on main: the workflow tags it, builds the zip, creates a GitHub
+# release and uploads to CurseForge (when the CF_API_KEY secret is set).
 on:
   push:
-    tags:
-      - "v*"
+    branches: [main]
+  workflow_dispatch:
 
 jobs:
   release:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-    env:
-      CF_API_KEY: ${{ secrets.CF_API_KEY }}
-      GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0
 
-      # Builds the zip, creates a GitHub release and, once the toc has
-      # "## X-Curse-Project-ID" and the CF_API_KEY secret is set, uploads to CurseForge.
+      - name: Tag a new version from CHANGELOG.md
+        id: tag
+        run: |
+          v=$(grep -m1 -oP '^## \K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md)
+          if [ -z "$v" ]; then echo "No version heading in CHANGELOG.md"; exit 1; fi
+          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+            echo "v$v already released"
+            echo "release=false" >> "$GITHUB_OUTPUT"
+          else
+            git tag "v$v"
+            git push origin "v$v"
+            echo "release=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - uses: BigWigsMods/packager@v2
+        if: steps.tag.outputs.release == 'true'
+        env:
+          CF_API_KEY: ${{ secrets.CF_API_KEY }}
+          GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
