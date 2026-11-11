@@ -6,9 +6,11 @@ local L = ns.L
 
 local DEFAULT_RANGE = 10
 local MIN_RANGE, MAX_RANGE = 3, 30
+local DEFAULT_ICON = 64
+local MIN_ICON, MAX_ICON = 16, 128
 
--- Settings the addon manages. Range is filled from the saved value.
-local function managedSettings(range)
+-- Settings the addon manages. Range and icon size come from the saved values.
+local function managedSettings(range, iconSize)
     return {
         { "autoLootDefault",          "1" },  -- loot without the loot window
         { "softTargetInteract",       "3" },  -- interact key picks the nearest target (keyboard and gamepad)
@@ -16,6 +18,9 @@ local function managedSettings(range)
         { "SoftTargetIconInteract",   "1" },  -- icon over the current interact target
         { "SoftTargetInteractArc",    "2" },  -- search all around the character, not only in front
         { "SoftTargetInteractRange",  tostring(range) },
+        { "SoftTargetWorldtextSize",  tostring(iconSize) }, -- size of the icon over the target (client default 32)
+        { "SoftTargetLowPriorityIcons", "1" }, -- keep the icon even when a quest or loot marker is shown
+        { "SoftTargetNameplateInteract", "1" }, -- show the name of the interact target
     }
 end
 
@@ -36,7 +41,7 @@ end
 local db
 
 local function apply()
-    local list = managedSettings(db.range)
+    local list = managedSettings(db.range, db.iconSize)
     db.previous = db.previous or {}
     local done = 0
     for _, kv in ipairs(list) do
@@ -76,6 +81,7 @@ end
 local function printHelp()
     for i, line in ipairs(L.HELP) do
         if i == 3 then line = line:format(MIN_RANGE, MAX_RANGE, DEFAULT_RANGE) end
+        if i == 4 then line = line:format(MIN_ICON, MAX_ICON, DEFAULT_ICON) end
         print("  " .. line)
     end
 end
@@ -98,6 +104,15 @@ SlashCmdList.FOREVERLOOTKEY = function(msg)
         db.range = math.floor(n)
         if db.applied then setCVar("SoftTargetInteractRange", tostring(db.range)) end
         say(L.RANGE_SET:format(db.range))
+    elseif cmd == "icon" then
+        local n = tonumber(arg)
+        if not n or n < MIN_ICON or n > MAX_ICON then
+            say(L.ICON_BAD:format(MIN_ICON, MAX_ICON))
+            return
+        end
+        db.iconSize = math.floor(n)
+        if db.applied then setCVar("SoftTargetWorldtextSize", tostring(db.iconSize)) end
+        say(L.ICON_SET:format(db.iconSize))
     elseif cmd == "who" then
         say(L.WHO:format(describeInteractTarget(),
             tostring(getCVar("softTargetInteract")),
@@ -135,6 +150,7 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     ForeverLootKeyDB = ForeverLootKeyDB or {}
     db = ForeverLootKeyDB
     db.range = db.range or DEFAULT_RANGE
+    db.iconSize = db.iconSize or DEFAULT_ICON
     if db.disabledByUser then return end
     if not db.applied then
         say(L.APPLIED:format(apply()))
