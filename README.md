@@ -2,6 +2,8 @@
 
 A small addon for **World of Warcraft: Forever**. Press one key and you loot the nearest corpse or pick up the nearest quest object. You don't have to aim, click or target anything.
 
+![The game's icon over a quest object on a cliff wall, next to the character](media/screenshot-highlight.png)
+
 ## What it does
 
 - **One key for looting.** It turns on the game's own *soft-target interact*. The nearest corpse, quest item, herb, ore node or chest within 10 yards becomes your interact target, and your **Interact with Target** key uses it.
