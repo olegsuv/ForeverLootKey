@@ -1,8 +1,8 @@
 name: Release
 
 # A new version is released when the top "## x.y.z" heading in CHANGELOG.md
-# changes on main: the workflow tags it, builds the zip, creates a GitHub
-# release and uploads to CurseForge (when the CF_API_KEY secret is set).
+# has no GitHub release yet: the workflow tags HEAD, builds the zip, creates the
+# GitHub release and uploads to CurseForge (when the CF_API_KEY secret is set).
 on:
   push:
     branches: [main]
@@ -13,6 +13,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -23,17 +25,23 @@ jobs:
         run: |
           v=$(grep -m1 -oP '^## \K[0-9]+\.[0-9]+\.[0-9]+' CHANGELOG.md)
           if [ -z "$v" ]; then echo "No version heading in CHANGELOG.md"; exit 1; fi
-          if git rev-parse -q --verify "refs/tags/v$v" >/dev/null; then
+          if gh release view "v$v" >/dev/null 2>&1; then
             echo "v$v already released"
             echo "release=false" >> "$GITHUB_OUTPUT"
           else
-            git tag "v$v"
-            git push origin "v$v"
+            git tag -f "v$v"
+            git push -f origin "v$v"
             echo "release=true" >> "$GITHUB_OUTPUT"
           fi
 
-      - uses: BigWigsMods/packager@v2
+      # The packager skips branch pushes that have a tag on HEAD (it expects a
+      # separate tag-push run, which a GITHUB_TOKEN push never triggers), so it
+      # runs here as a manual dispatch.
+      - name: Package and upload
         if: steps.tag.outputs.release == 'true'
         env:
           CF_API_KEY: ${{ secrets.CF_API_KEY }}
           GITHUB_OAUTH: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          curl -fsSL https://raw.githubusercontent.com/BigWigsMods/packager/v2/release.sh -o "$RUNNER_TEMP/release.sh"
+          GITHUB_EVENT_NAME=workflow_dispatch bash "$RUNNER_TEMP/release.sh"
