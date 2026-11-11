@@ -3,6 +3,7 @@ package-as: ForeverLootKey
 ignore:
   - README.md
   - .github
+  - media
 
 manual-changelog:
   filename: CHANGELOG.md
