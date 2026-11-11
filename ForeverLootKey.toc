@@ -8,6 +8,7 @@
 ## IconTexture: Interface\Icons\INV_Misc_Bag_10
 ## X-License: MIT
 ## X-Website: https://github.com/olegsuv/ForeverLootKey
+## X-Curse-Project-ID: 1797506
 
 Locales\enUS.lua
 Locales\ruRU.lua
