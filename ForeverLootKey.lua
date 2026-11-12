@@ -7,6 +7,7 @@ local L = ns.L
 local DEFAULT_RANGE = 10
 local MIN_RANGE, MAX_RANGE = 3, 30
 local DEFAULT_ICON = 64
+local FISHING_RANGE = 30 -- the bobber lands 15-20 yards away
 local MIN_ICON, MAX_ICON = 16, 128
 
 -- Settings the addon manages. Range and icon size come from the saved values.
@@ -123,6 +124,32 @@ SlashCmdList.FOREVERLOOTKEY = function(msg)
     end
 end
 
+-- While fishing, widen the interact range so the key reaches the bobber.
+local FISHING_IDS = { [7620] = true, [7731] = true, [7732] = true, [18248] = true }
+local fishingName
+local fishing = false
+
+local function isFishing(spellID)
+    local ok, result = pcall(function()
+        if FISHING_IDS[spellID] then return true end
+        fishingName = fishingName or C_Spell.GetSpellName(7620) or "Fishing"
+        return C_Spell.GetSpellName(spellID) == fishingName
+    end)
+    return ok and result == true
+end
+
+local function onChannelStart(spellID)
+    if not db or not db.applied or not isFishing(spellID) then return end
+    fishing = true
+    setCVar("SoftTargetInteractRange", tostring(FISHING_RANGE))
+end
+
+local function onChannelStop()
+    if not fishing then return end
+    fishing = false
+    setCVar("SoftTargetInteractRange", tostring(db.range))
+end
+
 -- Instant loot: take every slot as soon as the loot is ready.
 local lastLoot = 0
 local function onLootReady(autoLoot)
@@ -142,9 +169,17 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("LOOT_READY")
-frame:SetScript("OnEvent", function(_, event, arg1)
+frame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_START", "player")
+frame:RegisterUnitEvent("UNIT_SPELLCAST_CHANNEL_STOP", "player")
+frame:SetScript("OnEvent", function(_, event, arg1, arg2, arg3)
     if event == "LOOT_READY" then
         onLootReady(arg1)
+        return
+    elseif event == "UNIT_SPELLCAST_CHANNEL_START" then
+        onChannelStart(arg3)
+        return
+    elseif event == "UNIT_SPELLCAST_CHANNEL_STOP" then
+        onChannelStop()
         return
     end
     ForeverLootKeyDB = ForeverLootKeyDB or {}
