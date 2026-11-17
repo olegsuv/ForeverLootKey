@@ -6,6 +6,8 @@ A small addon for **World of Warcraft: Forever**. Press one key and you loot the
 
 ![The icon and name over a skinnable corpse](media/screenshot-skinning.png)
 
+![Settings window: on/off, interact range, icon size, minimap button](media/screenshot-settings.png)
+
 ## What it does
 
 - **One key for looting.** It turns on the game's own *soft-target interact*. The nearest corpse, quest item, herb, ore node or chest within 10 yards becomes your interact target, and your **Interact with Target** key uses it.
@@ -24,7 +26,8 @@ The addon only uses settings and APIs that the game client provides. You still p
 
 | Command | What it does |
 |---|---|
-| `/lootkey` | Show help |
+| `/lootkey` | Open the settings window (also the minimap button and the addons menu) |
+| `/lootkey help` | Show help |
 | `/lootkey who` | Show what the interact key would use right now, plus the current mode and range |
 | `/lootkey range <3-30>` | Set the interact range in yards (default 10) |
 | `/lootkey icon <16-128>` | Set the size of the icon over the target (default 64) |
