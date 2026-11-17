@@ -80,29 +80,60 @@ end
 
 local function printHelp()
     for i, line in ipairs(L.HELP) do
-        if i == 3 then line = line:format(MIN_RANGE, MAX_RANGE, DEFAULT_RANGE) end
-        if i == 4 then line = line:format(MIN_ICON, MAX_ICON, DEFAULT_ICON) end
+        if i == 4 then line = line:format(MIN_RANGE, MAX_RANGE, DEFAULT_RANGE) end
+        if i == 5 then line = line:format(MIN_ICON, MAX_ICON, DEFAULT_ICON) end
         print("  " .. line)
     end
 end
+
+-- Actions shared by the slash commands and the settings window
+function ns.IsEnabled()
+    return db and not db.disabledByUser
+end
+
+function ns.SetEnabled(on)
+    if on then
+        db.disabledByUser = nil
+        say(L.APPLIED:format(apply()))
+    else
+        restore()
+    end
+end
+
+function ns.SetRange(n)
+    db.range = math.floor(n)
+    if db.applied then setCVar("SoftTargetInteractRange", tostring(db.range)) end
+end
+
+function ns.SetIconSize(n)
+    db.iconSize = math.floor(n)
+    if db.applied then setCVar("SoftTargetWorldtextSize", tostring(db.iconSize)) end
+end
+
+function ns.PrintWho()
+    say(L.WHO:format(describeInteractTarget(),
+        tostring(getCVar("softTargetInteract")),
+        tostring(getCVar("SoftTargetInteractRange")),
+        getCVar("autoLootDefault") == "1" and L.ON or L.OFF))
+end
+
+ns.MIN_RANGE, ns.MAX_RANGE, ns.MIN_ICON, ns.MAX_ICON = MIN_RANGE, MAX_RANGE, MIN_ICON, MAX_ICON
 
 SLASH_FOREVERLOOTKEY1 = "/lootkey"
 SLASH_FOREVERLOOTKEY2 = "/flk"
 SlashCmdList.FOREVERLOOTKEY = function(msg)
     local cmd, arg = strtrim(msg or ""):lower():match("^(%S*)%s*(.-)$")
     if cmd == "on" then
-        db.disabledByUser = nil
-        say(L.APPLIED:format(apply()))
+        ns.SetEnabled(true)
     elseif cmd == "off" then
-        restore()
+        ns.SetEnabled(false)
     elseif cmd == "range" then
         local n = tonumber(arg)
         if not n or n < MIN_RANGE or n > MAX_RANGE then
             say(L.RANGE_BAD:format(MIN_RANGE, MAX_RANGE))
             return
         end
-        db.range = math.floor(n)
-        if db.applied then setCVar("SoftTargetInteractRange", tostring(db.range)) end
+        ns.SetRange(n)
         say(L.RANGE_SET:format(db.range))
     elseif cmd == "icon" then
         local n = tonumber(arg)
@@ -110,14 +141,12 @@ SlashCmdList.FOREVERLOOTKEY = function(msg)
             say(L.ICON_BAD:format(MIN_ICON, MAX_ICON))
             return
         end
-        db.iconSize = math.floor(n)
-        if db.applied then setCVar("SoftTargetWorldtextSize", tostring(db.iconSize)) end
+        ns.SetIconSize(n)
         say(L.ICON_SET:format(db.iconSize))
     elseif cmd == "who" then
-        say(L.WHO:format(describeInteractTarget(),
-            tostring(getCVar("softTargetInteract")),
-            tostring(getCVar("SoftTargetInteractRange")),
-            getCVar("autoLootDefault") == "1" and L.ON or L.OFF))
+        ns.PrintWho()
+    elseif cmd == "" or cmd == "config" then
+        ns.ToggleOptions()
     else
         printHelp()
     end
@@ -151,6 +180,8 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     db = ForeverLootKeyDB
     db.range = db.range or DEFAULT_RANGE
     db.iconSize = db.iconSize or DEFAULT_ICON
+    ns.db = db
+    if ns.InitOptions then ns.InitOptions() end
     if db.disabledByUser then return end
     if not db.applied then
         say(L.APPLIED:format(apply()))
