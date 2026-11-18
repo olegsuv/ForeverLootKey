@@ -241,6 +241,90 @@ function Window:AddButtons(list)
     self.y = self.y - 30
 end
 
+---------------------------------------------------------------------------
+-- The other Forever addons: a "Get it" link for the ones you don't have
+---------------------------------------------------------------------------
+local FAMILY = {
+    { name = "ForeverRotation", title = "Forever Rotation", url = "https://www.curseforge.com/wow/addons/forever-rotation",
+      notes = "next spell to press, damage numbers on your buttons" },
+    { name = "ForeverGear", title = "Forever Gear", url = "https://www.curseforge.com/wow/addons/forever-gear",
+      notes = "green arrows on better gear in your bags" },
+    { name = "ForeverLootKey", title = "Forever LootKey", url = "https://www.curseforge.com/wow/addons/forever-lootkey",
+      notes = "one key loots the nearest corpse, instant auto loot" },
+}
+
+-- "loaded", "off" (installed, not enabled) or "missing"
+local function addonState(name)
+    local A = C_AddOns or {}
+    local isLoaded = A.IsAddOnLoaded or IsAddOnLoaded
+    if isLoaded and isLoaded(name) then return "loaded" end
+    local info = A.GetAddOnInfo or GetAddOnInfo
+    if not info then return "missing" end
+    local ok, _, _, _, _, reason = pcall(info, name)
+    if not ok or reason == "MISSING" then return "missing" end
+    return "off"
+end
+
+-- the game can't open a browser: show the link ready to copy
+function UI.ShowLink(title, url)
+    if not (StaticPopupDialogs and StaticPopup_Show) then
+        print(title .. ": " .. url)
+        return
+    end
+    local function box(popup) return popup.editBox or popup.EditBox or (popup.GetEditBox and popup:GetEditBox()) end
+    StaticPopupDialogs.FOREVER_ADDON_LINK = StaticPopupDialogs.FOREVER_ADDON_LINK or {
+        text = "%s\nCopy the link (Ctrl+C) and open it in your browser:",
+        button1 = OKAY or "OK",
+        hasEditBox = true,
+        editBoxWidth = 330,
+        OnShow = function(popup, data)
+            local eb = box(popup)
+            if eb then eb:SetText(data or ""); eb:HighlightText(); eb:SetFocus() end
+        end,
+        EditBoxOnTextChanged = function(eb, data) -- keep the link intact, always selected
+            if eb:GetText() ~= data then eb:SetText(data or "") end
+            eb:HighlightText()
+        end,
+        EditBoxOnEnterPressed = function(eb) eb:GetParent():Hide() end,
+        EditBoxOnEscapePressed = function(eb) eb:GetParent():Hide() end,
+        timeout = 0,
+        whileDead = true,
+        hideOnEscape = true,
+    }
+    StaticPopup_Show("FOREVER_ADDON_LINK", title, nil, url)
+end
+
+function Window:AddFamily()
+    local rows = {}
+    for _, a in ipairs(FAMILY) do
+        if a.name ~= ADDON then
+            local state = addonState(a.name)
+            if state ~= "loaded" then rows[#rows + 1] = { addon = a, state = state } end
+        end
+    end
+    if #rows == 0 then return end -- you have them all: nothing to advertise
+    self:AddHeader("More Forever addons")
+    for _, r in ipairs(rows) do
+        local a = r.addon
+        local text = self:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+        text:SetPoint("TOPLEFT", 22, self.y)
+        text:SetWidth(self.width - 22 - 100)
+        text:SetJustifyH("LEFT")
+        if r.state == "missing" then
+            text:SetText(("|cffffd100%s|r - %s"):format(a.title, a.notes))
+            local b = tryFrame("Button", nil, self, "UIPanelButtonTemplate")
+            b:SetSize(76, 22)
+            b:SetPoint("TOPRIGHT", -16, self.y + 2)
+            b:SetText("Get it")
+            b:SetScript("OnClick", function() UI.ShowLink(a.title, a.url) end)
+        else
+            text:SetText(("|cffffd100%s|r - installed but off: enable it in the AddOns list"):format(a.title))
+        end
+        self.y = self.y - 32
+    end
+end
+
 function Window:Finish()
+    self:AddFamily()
     self:SetHeight(-self.y + 26) -- room for the version line
 end

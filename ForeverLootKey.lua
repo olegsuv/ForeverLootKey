@@ -152,6 +152,137 @@ SlashCmdList.FOREVERLOOTKEY = function(msg)
     end
 end
 
+---------------------------------------------------------------------------
+-- Full bags (off by default): throw away the least useful item so the loot fits.
+-- Gray junk first (cheapest stack), then food / drink you have plenty of better.
+---------------------------------------------------------------------------
+local FOOD_CLASS, FOOD_SUBCLASS = 0, 5 -- Consumable > Food & Drink
+local PLENTY = 20                        -- better food / drink you carry before the weaker one may go
+local MAX_THROWS = 5                     -- per corpse
+
+local function bagSlots()
+    return 0, NUM_BAG_SLOTS or 4
+end
+
+local function freeSlots()
+    local n = 0
+    local first, last = bagSlots()
+    for bag = first, last do
+        local free, family = C_Container.GetContainerNumFreeSlots(bag)
+        if free and (family == nil or family == 0) then n = n + free end -- not quivers / soul bags
+    end
+    return n
+end
+
+local function wellFed(bag, slot)
+    if not (C_TooltipInfo and C_TooltipInfo.GetBagItem) then return false end
+    local ok, data = pcall(C_TooltipInfo.GetBagItem, bag, slot)
+    if not ok or type(data) ~= "table" or not data.lines then return false end
+    for _, line in ipairs(data.lines) do
+        local t = line.leftText and line.leftText:lower()
+        if t and (t:find("well fed", 1, true) or t:find("сыт", 1, true)) then return true end
+    end
+    return false
+end
+
+-- the item to throw away: { bag, slot, link, gray, value } or nil
+local function findJunk()
+    local gray
+    local food = {} -- [item spell name: Food / Drink] = { stacks }
+    local first, last = bagSlots()
+    for bag = first, last do
+        for slot = 1, C_Container.GetContainerNumSlots(bag) or 0 do
+            local info = C_Container.GetContainerItemInfo(bag, slot)
+            if info and info.itemID and not info.isLocked then
+                local _, _, _, ilvl, _, _, _, _, _, _, price, classID, subID = C_Item.GetItemInfo(info.itemID)
+                local count = info.stackCount or 1
+                local value = (price or 0) * count
+                if info.quality == 0 then
+                    if not gray or value < gray.value then
+                        gray = { bag = bag, slot = slot, link = info.hyperlink, gray = true, value = value }
+                    end
+                elseif classID == FOOD_CLASS and subID == FOOD_SUBCLASS and ilvl then
+                    local spell = C_Item.GetItemSpell(info.itemID)
+                    if spell then
+                        food[spell] = food[spell] or {}
+                        table.insert(food[spell], { bag = bag, slot = slot, link = info.hyperlink,
+                            ilvl = ilvl, count = count, value = value })
+                    end
+                end
+            end
+        end
+    end
+    if gray then return gray end
+
+    local pick
+    for _, stacks in pairs(food) do
+        for _, s in ipairs(stacks) do
+            local better = 0
+            for _, o in ipairs(stacks) do
+                if o.ilvl > s.ilvl then better = better + o.count end
+            end
+            if better >= PLENTY and not wellFed(s.bag, s.slot)
+                and (not pick or s.ilvl < pick.ilvl or (s.ilvl == pick.ilvl and s.count < pick.count)) then
+                pick = s
+            end
+        end
+    end
+    return pick
+end
+
+-- the most wanted item still in the loot window
+local function bestLoot()
+    local best, bestRank
+    for slot = 1, GetNumLootItems() do
+        local isItem = LootSlotHasItem(slot)
+        if isItem and GetLootSlotType and Enum.LootSlotType then
+            isItem = GetLootSlotType(slot) == Enum.LootSlotType.Item
+        end
+        if isItem then
+            local _, _, qty, _, quality, locked, isQuest = GetLootSlotInfo(slot)
+            if not locked then
+                local link = GetLootSlotLink(slot)
+                local price = link and select(11, C_Item.GetItemInfo(link)) or 0
+                local value = (price or 0) * (qty or 1)
+                local rank = isQuest and math.huge or ((quality or 0) * 1e9 + value)
+                if not bestRank or rank > bestRank then
+                    best = { slot = slot, link = link, quality = quality or 0, value = value, quest = isQuest }
+                    bestRank = rank
+                end
+            end
+        end
+    end
+    return best
+end
+
+local function throwAway(junk)
+    if GetCursorInfo() then return false end
+    C_Container.PickupContainerItem(junk.bag, junk.slot)
+    if GetCursorInfo() ~= "item" then ClearCursor(); return false end
+    local ok = pcall(DeleteCursorItem)
+    if not ok or GetCursorInfo() then ClearCursor(); return false end
+    return true
+end
+
+local throws = 0
+local function makeRoom()
+    if not db.makeRoom or throws >= MAX_THROWS then return end
+    if GetNumLootItems() == 0 or freeSlots() > 0 then return end
+    local loot = bestLoot()
+    if not loot then return end
+    local junk = findJunk()
+    if not junk then return end
+    -- gray loot only pushes out cheaper gray junk
+    if not loot.quest and loot.quality == 0 and not (junk.gray and loot.value > junk.value) then return end
+    if not throwAway(junk) then return end
+    throws = throws + 1
+    say(L.THREW_AWAY:format(junk.link or "?", loot.link or "?"))
+    C_Timer.After(0.3, function()
+        if GetNumLootItems() >= loot.slot and LootSlotHasItem(loot.slot) then LootSlot(loot.slot) end
+        C_Timer.After(0.3, makeRoom)
+    end)
+end
+
 -- Instant loot: take every slot as soon as the loot is ready.
 local lastLoot = 0
 local function onLootReady(autoLoot)
@@ -165,6 +296,10 @@ local function onLootReady(autoLoot)
     if not wanted then return end
     for slot = GetNumLootItems(), 1, -1 do
         LootSlot(slot)
+    end
+    if db and db.makeRoom then
+        throws = 0
+        C_Timer.After(0.3, makeRoom) -- whatever did not fit is still in the loot window
     end
 end
 

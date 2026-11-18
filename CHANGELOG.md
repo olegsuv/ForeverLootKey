@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.3.0
+
+- Optional, off by default: when your bags are full, auto loot throws away the least useful item so the new loot fits: the cheapest gray stack, else food / drink you carry 20+ better of (never Well Fed food). Gray loot only replaces cheaper gray junk. Settings: "Bags full: throw away gray junk or weak food/drink".
+- Settings window: "More Forever addons" with a link to each Forever addon you don't have yet (nothing shown when you have them all).
+
 ## 1.2.1
 
 - The settings window and the minimap button tooltip show the loaded version.

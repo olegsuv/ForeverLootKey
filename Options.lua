@@ -12,6 +12,8 @@ local function build()
         function(v) ns.SetRange(v) end, function(v) return L.UI_YARDS:format(v) end)
     win:AddSlider(L.UI_ICON, ns.MIN_ICON, ns.MAX_ICON, 4, function() return db.iconSize end,
         function(v) ns.SetIconSize(v) end)
+    win:AddCheck(L.UI_MAKE_ROOM, function() return db.makeRoom end,
+        function(v) db.makeRoom = v or nil end, ns.IsEnabled)
     win:AddCheck(L.UI_MINIMAP, function() return not db.minimapHide end,
         function(v) db.minimapHide = not v; mini:UpdateShown() end)
     win:AddButtons({ { L.UI_WHO, ns.PrintWho } })
