@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.2.1
+
+- The settings window and the minimap button tooltip show the loaded version.
+
 ## 1.2.0
 
 - Settings window: on/off, interact range and icon size sliders. Open it with `/lootkey`, the minimap button or the addons menu.

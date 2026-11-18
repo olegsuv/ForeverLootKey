@@ -70,7 +70,7 @@ function UI.MinimapButton(opts)
     end)
     b:SetScript("OnEnter", function(self)
         GameTooltip:SetOwner(self, "ANCHOR_LEFT")
-        GameTooltip:AddLine(opts.title)
+        GameTooltip:AddDoubleLine(opts.title, "v" .. UI.Version(), nil, nil, nil, 0.6, 0.6, 0.6)
         if opts.lines then
             for _, line in ipairs(opts.lines()) do GameTooltip:AddLine(line, 1, 1, 1) end
         end
@@ -83,6 +83,14 @@ function UI.MinimapButton(opts)
     end
     b:UpdateShown()
     return b
+end
+
+-- the loaded version from the TOC ("dev" for an unpackaged copy)
+function UI.Version()
+    local get = (C_AddOns and C_AddOns.GetAddOnMetadata) or GetAddOnMetadata
+    local v = get and get(ADDON, "Version")
+    if not v or v == "" or v:find("@", 1, true) then return "dev" end
+    return v
 end
 
 ---------------------------------------------------------------------------
@@ -119,6 +127,11 @@ function UI.Window(name, title, width)
     local t = f:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
     t:SetPoint("TOP", 0, -6)
     t:SetText(title)
+
+    local v = f:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    v:SetPoint("BOTTOMRIGHT", -14, 10)
+    v:SetText("v" .. UI.Version())
+    f.versionText = v
 
     f.y = -34
     f.width = width or 340
@@ -229,5 +242,5 @@ function Window:AddButtons(list)
 end
 
 function Window:Finish()
-    self:SetHeight(-self.y + 14)
+    self:SetHeight(-self.y + 26) -- room for the version line
 end
