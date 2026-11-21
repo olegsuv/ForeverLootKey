@@ -13,8 +13,9 @@ A small addon for **World of Warcraft: Forever**. Press one key and you loot the
 - **One key for looting.** It turns on the game's own *soft-target interact*. The nearest corpse, quest item, herb, ore node or chest within 10 yards becomes your interact target, and your **Interact with Target** key uses it.
 - **Instant auto loot.** It turns on auto loot and takes every item as soon as the loot is ready, so the loot window never stays open. Hold your auto-loot modifier (Shift by default) to loot by hand.
 - **Highlight.** The game shows a large icon and the name over the object your key will use, which makes quest items on floors and walls and skinnable corpses easy to spot. The client shows it for one object at a time, within interact range.
+- **Room in full bags** (optional, off by default). When your bags are full, auto loot throws away the cheapest gray item, or food / drink weaker than your best, so the new loot fits. Quest items, green or better and bind-on-pickup loot always get room. When the junk can't go on its own, a row of 4-5 bag slots appears under the loot window: the cheapest item of each kind with its vendor price. Click one, drop it on the ground, and the loot goes into the freed slot.
 
-The addon only uses settings and APIs that the game client provides. You still press a key for every loot, and it does not automate anything.
+The addon only uses settings and APIs that the game client provides. You still press a key for every loot.
 
 ## Setup
 
