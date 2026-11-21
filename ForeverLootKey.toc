@@ -5,6 +5,7 @@
 ## Author: olegsuv
 ## Version: @project-version@
 ## SavedVariables: ForeverLootKeyDB
+## SavedVariablesPerCharacter: ForeverLootKeyCharDB
 ## IconTexture: Interface\Icons\INV_Misc_Bag_10
 ## AddonCompartmentFunc: ForeverLootKey_OnAddonCompartmentClick
 ## X-License: MIT

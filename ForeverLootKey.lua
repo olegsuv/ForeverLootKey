@@ -38,33 +38,46 @@ local function setCVar(name, value)
     return ok and getCVar(name) ~= nil
 end
 
-local db
+local db  -- account: options
+local cdb -- character: the settings you had before the addon (CVars are kept per character)
+
+-- the value to remember as "yours": the current one, unless the addon (on another character)
+-- already set it, then the game's default
+local function ownValue(name, addonValue)
+    local cur = getCVar(name)
+    if cur == nil then return false end
+    if cur == addonValue and GetCVarDefault then
+        local ok, def = pcall(GetCVarDefault, name)
+        if ok and def ~= nil then return def end
+    end
+    return cur
+end
 
 local function apply()
     local list = managedSettings(db.range, db.iconSize)
-    db.previous = db.previous or {}
+    cdb.previous = cdb.previous or {}
     local done = 0
     for _, kv in ipairs(list) do
         local name, value = kv[1], kv[2]
-        if db.previous[name] == nil then
-            db.previous[name] = getCVar(name) or false -- remember the player's own value once
+        if cdb.previous[name] == nil then
+            cdb.previous[name] = ownValue(name, value) -- remembered once per character
         end
         if setCVar(name, value) then done = done + 1 end
     end
-    db.applied = true
+    cdb.applied = true
     return done, #list
 end
 
 local function restore()
-    if not db.previous or not next(db.previous) then
+    if not cdb.previous or not next(cdb.previous) then
         say(L.NOTHING_TO_RESTORE)
         return
     end
-    for name, value in pairs(db.previous) do
+    for name, value in pairs(cdb.previous) do
         if value ~= false then setCVar(name, value) end
     end
-    db.previous = nil
-    db.applied = false
+    cdb.previous = nil
+    cdb.applied = false
     db.disabledByUser = true
     say(L.RESTORED)
 end
@@ -80,8 +93,8 @@ end
 
 local function printHelp()
     for i, line in ipairs(L.HELP) do
-        if i == 4 then line = line:format(MIN_RANGE, MAX_RANGE, DEFAULT_RANGE) end
-        if i == 5 then line = line:format(MIN_ICON, MAX_ICON, DEFAULT_ICON) end
+        if line:find("range <") then line = line:format(MIN_RANGE, MAX_RANGE, DEFAULT_RANGE) end
+        if line:find("icon <") then line = line:format(MIN_ICON, MAX_ICON, DEFAULT_ICON) end
         print("  " .. line)
     end
 end
@@ -102,12 +115,12 @@ end
 
 function ns.SetRange(n)
     db.range = math.floor(n)
-    if db.applied then setCVar("SoftTargetInteractRange", tostring(db.range)) end
+    if cdb.applied then setCVar("SoftTargetInteractRange", tostring(db.range)) end
 end
 
 function ns.SetIconSize(n)
     db.iconSize = math.floor(n)
-    if db.applied then setCVar("SoftTargetWorldtextSize", tostring(db.iconSize)) end
+    if cdb.applied then setCVar("SoftTargetWorldtextSize", tostring(db.iconSize)) end
 end
 
 function ns.PrintWho()
@@ -200,6 +213,12 @@ local function candidates()
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.itemID and not info.isLocked then
                 local _, _, _, ilvl, _, _, _, _, _, _, price, classID, subID = C_Item.GetItemInfo(info.itemID)
+                if not price then
+                    -- not in the cache yet: ask for it, the next pass will know
+                    if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, info.itemID) end
+                    local _, _, _, _, _, cls, sub = C_Item.GetItemInfoInstant(info.itemID)
+                    classID, subID = classID or cls, subID or sub
+                end
                 if classID ~= QUEST_CLASS and price and price > 0 then
                     local c = { bag = bag, slot = slot, link = info.hyperlink, ilvl = ilvl, itemID = info.itemID,
                                 icon = info.iconFileID, count = info.stackCount, quality = info.quality,
@@ -267,7 +286,13 @@ local function bestLoot()
             if not locked then
                 local link = GetLootSlotLink(slot)
                 local price, classID, bind
-                if link then price, classID, _, bind = select(11, C_Item.GetItemInfo(link)) end
+                if link then
+                    price, classID, _, bind = select(11, C_Item.GetItemInfo(link))
+                    if not price then
+                        if C_Item.RequestLoadItemDataByID then pcall(C_Item.RequestLoadItemDataByID, link) end
+                        classID = select(6, C_Item.GetItemInfoInstant(link))
+                    end
+                end
                 quality = quality or 0
                 local must = isQuest or classID == QUEST_CLASS or quality >= 2 or bind == BIND_ON_PICKUP
                 local value = (price or 0) * (qty or 1)
@@ -295,8 +320,9 @@ end
 -- show the item while the game deletes it). Once the game has refused (db.deleteBlocked, Forever
 -- does), a click only picks the item up.
 local function stillThere(c)
+    if GetCursorInfo() == "item" then return true end -- waiting on the cursor
     local info = C_Container.GetContainerItemInfo(c.bag, c.slot)
-    return info and info.itemID == c.itemID and not info.isLocked
+    return info and info.itemID == c.itemID
 end
 
 local function throwAway(c, fromClick, done)
@@ -306,7 +332,10 @@ local function throwAway(c, fromClick, done)
     end
     C_Container.PickupContainerItem(c.bag, c.slot)
     if GetCursorInfo() ~= "item" then ClearCursor(); done("busy"); return end
-    if db.deleteBlocked and fromClick then done("cursor"); return end
+    if db.deleteBlocked then
+        if fromClick then done("cursor"); return end
+        ClearCursor(); done("blocked"); return
+    end
     local ok, err = pcall(DeleteCursorItem)
     if not ok then note("DeleteCursorItem error: " .. tostring(err)) end
     C_Timer.After(0.5, function()
@@ -322,6 +351,17 @@ local MAX_ROWS = 5 -- slots in the make-room panel (fewer when the loot window i
 local throws, busyUntil = 0, 0
 local makeRoom, panel
 
+-- one make-room pass a moment later, however many events asked for it
+local roomPending = false
+local function makeRoomSoon(delay)
+    if roomPending then return end
+    roomPending = true
+    C_Timer.After(delay or 0.3, function()
+        roomPending = false
+        makeRoom()
+    end)
+end
+
 local function lootAgain(loot)
     if GetNumLootItems() >= loot.slot and LootSlotHasItem(loot.slot) then LootSlot(loot.slot) end
 end
@@ -333,7 +373,7 @@ local function thrown(c, loot)
     say(L.THREW_AWAY:format(c.link or "?", loot.link or "?"))
     C_Timer.After(0.3, function()
         lootAgain(loot)
-        C_Timer.After(0.4, makeRoom)
+        makeRoomSoon(0.4)
     end)
 end
 
@@ -525,9 +565,18 @@ makeRoom = function()
     local loot = bestLoot()
     if not loot then return end
     local list = candidates()
+    if not loot.must then
+        -- gray / white loot: only things worth less than it are worth throwing away for it
+        local cheaper = {}
+        for _, c in ipairs(list) do
+            if c.value < loot.value then cheaper[#cheaper + 1] = c end
+        end
+        list = cheaper
+    end
     if #list == 0 then
-        note("full, nothing to offer for " .. tostring(loot.link))
-        say(L.NO_JUNK)
+        note("full, nothing cheaper to offer for " .. tostring(loot.link))
+        if panel then panel:Hide() end
+        if loot.must then say(L.NO_JUNK) end
         return
     end
     -- on its own only junk goes (the cheapest), and only for loot worth more (quest, rolled and
@@ -552,11 +601,22 @@ makeRoom = function()
 end
 
 -- Instant loot: take every slot as soon as the loot is ready.
-local lastLoot = 0
+local lastLoot, lastKey = 0, nil
+local function lootKey()
+    local n = GetNumLootItems()
+    local guid
+    if GetLootSourceInfo then
+        local ok, g = pcall(GetLootSourceInfo, 1)
+        if ok then guid = g end
+    end
+    return tostring(guid) .. ":" .. n
+end
+
 local function onLootReady(autoLoot)
     local now = GetTime()
-    if now - lastLoot < 0.2 then return end
-    lastLoot = now
+    local key = lootKey()
+    if key == lastKey and now - lastLoot < 0.5 then return end -- the same loot, fired again
+    lastLoot, lastKey = now, key
     local wanted = autoLoot
     if wanted == nil then
         wanted = GetCVarBool("autoLootDefault") ~= IsModifiedClick("AUTOLOOTTOGGLE")
@@ -568,7 +628,7 @@ local function onLootReady(autoLoot)
     end
     if db and db.makeRoom and now >= busyUntil then
         throws = 0
-        C_Timer.After(0.3, makeRoom) -- whatever did not fit is still in the loot window
+        makeRoomSoon(0.3) -- whatever did not fit is still in the loot window
     end
 end
 
@@ -576,6 +636,7 @@ local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("LOOT_READY")
 frame:RegisterEvent("LOOT_CLOSED")
+frame:RegisterEvent("LOOT_BIND_CONFIRM")
 frame:RegisterEvent("BAG_UPDATE_DELAYED")
 frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "LOOT_READY" then
@@ -592,7 +653,14 @@ frame:SetScript("OnEvent", function(_, event, arg1)
                     lootAgain(loot)
                 end
             end
-            C_Timer.After(0.3, makeRoom)
+            makeRoomSoon(0.3)
+        end
+        return
+    elseif event == "LOOT_BIND_CONFIRM" then
+        -- bind-on-pickup loot asks "are you sure?": with auto loot on, yes
+        if arg1 and GetCVarBool("autoLootDefault") ~= IsModifiedClick("AUTOLOOTTOGGLE") then
+            pcall(ConfirmLootSlot, arg1)
+            if StaticPopup_Hide then StaticPopup_Hide("LOOT_BIND") end
         end
         return
     elseif event == "LOOT_CLOSED" then
@@ -603,10 +671,17 @@ frame:SetScript("OnEvent", function(_, event, arg1)
     db = ForeverLootKeyDB
     db.range = db.range or DEFAULT_RANGE
     db.iconSize = db.iconSize or DEFAULT_ICON
+    ForeverLootKeyCharDB = ForeverLootKeyCharDB or {}
+    cdb = ForeverLootKeyCharDB
+    if db.previous and not cdb.previous then -- 1.3.2: the snapshot moves to the character
+        cdb.previous, cdb.applied = db.previous, db.applied
+    end
+    db.previous, db.applied = nil, nil
+    if db.deleteBlocked == nil then db.deleteBlocked = true end -- Forever: addons can't delete items
     ns.db = db
     if ns.InitOptions then ns.InitOptions() end
     if db.disabledByUser then return end
-    if not db.applied then
+    if not cdb.applied then
         say(L.APPLIED:format(apply()))
     else
         apply() -- keep settings in place after game patches reset them; silent

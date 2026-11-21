@@ -1,3 +1,13 @@
+## 1.3.2
+
+- Fixed: after a click in the bags-full list the addon could say it threw the item away while the item was still on your cursor. On Forever the game doesn't let addons delete items, so the list now always leaves the throw to you (one click on the ground), without trying first.
+- Bind-on-pickup loot is confirmed for you when auto loot is on.
+- Two corpses looted right after each other are both auto looted (the second was skipped within 0.2 s).
+- Items the game hasn't loaded yet are no longer silently left out of the bags-full list; they are loaded and shown on the next pass.
+- The settings you had before the addon are remembered per character, so `/lootkey off` on an alt restores that character's own values (a value the addon had already set on another character is restored to the game default).
+- Gray and white loot only lists items worth less than the loot itself; when there is nothing cheaper, the list stays hidden instead of asking you to throw away something more valuable.
+- Shorter title on the bags-full list; the hint mentions the game's confirmation.
+
 # Changelog
 
 ## 1.3.1
