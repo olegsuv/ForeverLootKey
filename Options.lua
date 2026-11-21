@@ -6,7 +6,7 @@ local win, mini
 
 local function build()
     local db = ns.db
-    win = ns.UI.Window("ForeverLootKeyOptions", "Forever LootKey", 320)
+    win = ns.UI.Window("ForeverLootKeyOptions", "Forever Loot", 320)
     win:AddCheck(L.UI_ENABLED, ns.IsEnabled, function(v) ns.SetEnabled(v) end)
     win:AddSlider(L.UI_RANGE, ns.MIN_RANGE, ns.MAX_RANGE, 1, function() return db.range end,
         function(v) ns.SetRange(v) end, function(v) return L.UI_YARDS:format(v) end)
@@ -32,7 +32,7 @@ function ns.InitOptions()
         icon = ICON,
         db = ns.db,
         angle = 235,
-        title = "Forever LootKey",
+        title = "Forever Loot",
         lines = function() return { L.UI_TIP_LEFT, L.UI_TIP_RIGHT, L.UI_TIP_DRAG } end,
         onLeft = ns.ToggleOptions,
         onRight = ns.PrintWho,

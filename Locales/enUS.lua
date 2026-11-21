@@ -1,7 +1,7 @@
 local _, ns = ...
 
 ns.L = {
-    PREFIX = "|cff33ff99Forever LootKey|r: ",
+    PREFIX = "|cff33ff99Forever Loot|r: ",
     APPLIED = "set up: auto loot on, nearest corpse/object becomes your interact target (%d/%d settings applied). Bind a key to \"Interact with Target\".",
     RESTORED = "your previous settings are restored. You can now disable the addon.",
     NOTHING_TO_RESTORE = "nothing to restore, the addon has not changed your settings.",
@@ -21,6 +21,10 @@ ns.L = {
     UI_ICON = "Icon size over the target",
     UI_MAKE_ROOM = "Bags full: throw away gray junk or weak food/drink",
     THREW_AWAY = "bags full, threw away %s to loot %s.",
+    THROW_BUTTON = "Bags full. Click what to throw away:",
+    THROW_FOR = "to make room for %s",
+    THROW_BY_HAND = "%s is on your cursor: click on the ground to throw it away, the loot goes in its place.",
+    NO_JUNK = "bags full, nothing in your bags can be sold or thrown away.",
     UI_MINIMAP = "Minimap button",
     UI_WHO = "What will the key pick now?",
     UI_TIP_LEFT = "Left-click: settings",

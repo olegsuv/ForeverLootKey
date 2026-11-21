@@ -1,4 +1,4 @@
--- Forever LootKey
+-- Forever Loot
 -- One key loots the nearest corpse or quest object (soft-target interact),
 -- instant auto loot, and an icon over nearby interactable objects.
 local _, ns = ...
@@ -153,12 +153,13 @@ SlashCmdList.FOREVERLOOTKEY = function(msg)
 end
 
 ---------------------------------------------------------------------------
--- Full bags (off by default): throw away the least useful item so the loot fits.
--- Gray junk first (cheapest stack), then food / drink you have plenty of better.
+-- Full bags (off by default): make room so the loot fits. Junk (the cheapest gray stack or weaker
+-- food / drink) goes on its own; otherwise a list of what could go, for you to pick from.
 ---------------------------------------------------------------------------
 local FOOD_CLASS, FOOD_SUBCLASS = 0, 5 -- Consumable > Food & Drink
-local PLENTY = 20                        -- better food / drink you carry before the weaker one may go
 local MAX_THROWS = 5                     -- per corpse
+local QUEST_CLASS = 12                   -- Quest items
+local BIND_ON_PICKUP = 1
 
 local function bagSlots()
     return 0, NUM_BAG_SLOTS or 4
@@ -185,9 +186,13 @@ local function wellFed(bag, slot)
     return false
 end
 
--- the item to throw away: { bag, slot, link, gray, value } or nil
-local function findJunk()
-    local gray
+-- What could go to make room, cheapest stack first: { bag, slot, link, value, junk, ... }.
+-- Junk (thrown on its own when the loot is worth it): gray items and food / drink weaker than
+-- the best of its kind you carry (the best food, the best drink and Well Fed food stay).
+-- One of each kind only (five gray items show as the cheapest one), so the choice stays short.
+-- Quest items and things without a vendor price (hearthstone and such) are never offered.
+local function candidates()
+    local list = {}
     local food = {} -- [item spell name: Food / Drink] = { stacks }
     local first, last = bagSlots()
     for bag = first, last do
@@ -195,42 +200,61 @@ local function findJunk()
             local info = C_Container.GetContainerItemInfo(bag, slot)
             if info and info.itemID and not info.isLocked then
                 local _, _, _, ilvl, _, _, _, _, _, _, price, classID, subID = C_Item.GetItemInfo(info.itemID)
-                local count = info.stackCount or 1
-                local value = (price or 0) * count
-                if info.quality == 0 then
-                    if not gray or value < gray.value then
-                        gray = { bag = bag, slot = slot, link = info.hyperlink, gray = true, value = value }
-                    end
-                elseif classID == FOOD_CLASS and subID == FOOD_SUBCLASS and ilvl then
-                    local spell = C_Item.GetItemSpell(info.itemID)
-                    if spell then
-                        food[spell] = food[spell] or {}
-                        table.insert(food[spell], { bag = bag, slot = slot, link = info.hyperlink,
-                            ilvl = ilvl, count = count, value = value })
+                if classID ~= QUEST_CLASS and price and price > 0 then
+                    local c = { bag = bag, slot = slot, link = info.hyperlink, ilvl = ilvl, itemID = info.itemID,
+                                icon = info.iconFileID, count = info.stackCount, quality = info.quality,
+                                value = price * (info.stackCount or 1) }
+                    list[#list + 1] = c
+                    c.kind = tostring(classID) .. ":" .. tostring(subID)
+                    if info.quality == 0 then
+                        c.junk = true
+                        c.kind = "gray"
+                    elseif classID == FOOD_CLASS and subID == FOOD_SUBCLASS and ilvl then
+                        local spell = C_Item.GetItemSpell(info.itemID)
+                        if spell then
+                            c.kind = "food:" .. spell
+                            food[spell] = food[spell] or {}
+                            table.insert(food[spell], c)
+                        end
                     end
                 end
             end
         end
     end
-    if gray then return gray end
-
-    local pick
     for _, stacks in pairs(food) do
+        local best = 0
+        for _, s in ipairs(stacks) do best = math.max(best, s.ilvl) end
         for _, s in ipairs(stacks) do
-            local better = 0
-            for _, o in ipairs(stacks) do
-                if o.ilvl > s.ilvl then better = better + o.count end
-            end
-            if better >= PLENTY and not wellFed(s.bag, s.slot)
-                and (not pick or s.ilvl < pick.ilvl or (s.ilvl == pick.ilvl and s.count < pick.count)) then
-                pick = s
-            end
+            if s.ilvl < best and not wellFed(s.bag, s.slot) then s.junk = true end
         end
     end
-    return pick
+    -- cheapest first (junk first at the same price)
+    table.sort(list, function(a, b)
+        if a.value ~= b.value then return a.value < b.value end
+        return a.junk == true and b.junk ~= true
+    end)
+    -- one of each kind: the cheapest gray, food, drink, cloth, ... (junk of a kind before the rest)
+    local pick, order = {}, {}
+    for _, c in ipairs(list) do
+        local cur = pick[c.kind]
+        if not cur then
+            pick[c.kind] = c
+            order[#order + 1] = c.kind
+        elseif c.junk and not cur.junk then
+            pick[c.kind] = c
+        end
+    end
+    local out = {}
+    for _, kind in ipairs(order) do out[#out + 1] = pick[kind] end
+    table.sort(out, function(a, b)
+        if a.value ~= b.value then return a.value < b.value end
+        return a.junk == true and b.junk ~= true
+    end)
+    return out
 end
 
--- the most wanted item still in the loot window
+-- the most wanted item still in the loot window; must = quest item, green or better
+-- (what you won on a roll) or bind on pickup: it gets room whatever the junk is worth
 local function bestLoot()
     local best, bestRank
     for slot = 1, GetNumLootItems() do
@@ -242,11 +266,14 @@ local function bestLoot()
             local _, _, qty, _, quality, locked, isQuest = GetLootSlotInfo(slot)
             if not locked then
                 local link = GetLootSlotLink(slot)
-                local price = link and select(11, C_Item.GetItemInfo(link)) or 0
+                local price, classID, bind
+                if link then price, classID, _, bind = select(11, C_Item.GetItemInfo(link)) end
+                quality = quality or 0
+                local must = isQuest or classID == QUEST_CLASS or quality >= 2 or bind == BIND_ON_PICKUP
                 local value = (price or 0) * (qty or 1)
-                local rank = isQuest and math.huge or ((quality or 0) * 1e9 + value)
+                local rank = (must and 1e12 or 0) + quality * 1e9 + value
                 if not bestRank or rank > bestRank then
-                    best = { slot = slot, link = link, quality = quality or 0, value = value, quest = isQuest }
+                    best = { slot = slot, link = link, must = must and true or false, value = value }
                     bestRank = rank
                 end
             end
@@ -255,31 +282,272 @@ local function bestLoot()
     return best
 end
 
-local function throwAway(junk)
-    if GetCursorInfo() then return false end
-    C_Container.PickupContainerItem(junk.bag, junk.slot)
-    if GetCursorInfo() ~= "item" then ClearCursor(); return false end
-    local ok = pcall(DeleteCursorItem)
-    if not ok or GetCursorInfo() then ClearCursor(); return false end
-    return true
+-- short log of make-room decisions (saved, for bug reports)
+local function note(msg)
+    db.roomLog = db.roomLog or {}
+    table.insert(db.roomLog, date("%H:%M:%S ") .. msg)
+    while #db.roomLog > 40 do table.remove(db.roomLog, 1) end
 end
 
-local throws = 0
-local function makeRoom()
-    if not db.makeRoom or throws >= MAX_THROWS then return end
-    if GetNumLootItems() == 0 or freeSlots() > 0 then return end
+-- Throw an item away, then done(result): "ok", "busy" (something else on the cursor), "blocked"
+-- or "cursor" (from a click: the item waits on the cursor, one click on the ground and the game
+-- throws it away itself). Deleting is checked on the bag slot a moment later (the cursor may still
+-- show the item while the game deletes it). Once the game has refused (db.deleteBlocked, Forever
+-- does), a click only picks the item up.
+local function stillThere(c)
+    local info = C_Container.GetContainerItemInfo(c.bag, c.slot)
+    return info and info.itemID == c.itemID and not info.isLocked
+end
+
+local function throwAway(c, fromClick, done)
+    if GetCursorInfo() then
+        if not fromClick then done("busy"); return end
+        ClearCursor() -- you clicked another row: swap the item on the cursor
+    end
+    C_Container.PickupContainerItem(c.bag, c.slot)
+    if GetCursorInfo() ~= "item" then ClearCursor(); done("busy"); return end
+    if db.deleteBlocked and fromClick then done("cursor"); return end
+    local ok, err = pcall(DeleteCursorItem)
+    if not ok then note("DeleteCursorItem error: " .. tostring(err)) end
+    C_Timer.After(0.5, function()
+        if not stillThere(c) then done("ok"); return end
+        db.deleteBlocked = true
+        if fromClick and GetCursorInfo() == "item" then done("cursor"); return end
+        ClearCursor()
+        done("blocked")
+    end)
+end
+
+local MAX_ROWS = 5 -- slots in the make-room panel (fewer when the loot window is narrow)
+local throws, busyUntil = 0, 0
+local makeRoom, panel
+
+local function lootAgain(loot)
+    if GetNumLootItems() >= loot.slot and LootSlotHasItem(loot.slot) then LootSlot(loot.slot) end
+end
+
+local function thrown(c, loot)
+    throws = throws + 1
+    busyUntil = GetTime() + 0.8
+    note("threw " .. tostring(c.link) .. " for " .. tostring(loot.link))
+    say(L.THREW_AWAY:format(c.link or "?", loot.link or "?"))
+    C_Timer.After(0.3, function()
+        lootAgain(loot)
+        C_Timer.After(0.4, makeRoom)
+    end)
+end
+
+---------------------------------------------------------------------------
+-- The panel under the loot window: what you could throw away, in a row of bag slots
+-- (icon, quality border, count, vendor price on the slot, the bag tooltip on hover), no wider
+-- than the loot window. A click on a slot throws that item away and loots: a click counts as
+-- your own action. The "click on the ground" hint goes under the slots so they don't move.
+---------------------------------------------------------------------------
+local SLOT, GAP, PAD = 36, 5, 10
+local MIN_ROWS = 4
+
+local COIN = {
+    g = "|TInterface\\MoneyFrame\\UI-GoldIcon:0:0:1:0|t",
+    s = "|TInterface\\MoneyFrame\\UI-SilverIcon:0:0:1:0|t",
+    c = "|TInterface\\MoneyFrame\\UI-CopperIcon:0:0:1:0|t",
+}
+
+-- vendor price like the game shows it, the two biggest coins (12g 40s, 3s 15c, 80c)
+local function coins(copper)
+    local g, s, c = math.floor(copper / 10000), math.floor(copper / 100) % 100, copper % 100
+    local parts = {}
+    if g > 0 then parts[#parts + 1] = g .. COIN.g end
+    if s > 0 and #parts < 2 then parts[#parts + 1] = s .. COIN.s end
+    if c > 0 and #parts < 2 and g == 0 then parts[#parts + 1] = c .. COIN.c end
+    if #parts == 0 then return "0" .. COIN.c end
+    return table.concat(parts, " ")
+end
+
+local function rowWidth(n)
+    return PAD * 2 + n * SLOT + (n - 1) * GAP
+end
+
+local function layout()
+    local h = 9 + math.ceil(panel.title:GetStringHeight()) + 3 + math.ceil(panel.sub:GetStringHeight()) + 6 + SLOT
+    if panel.hint:IsShown() then h = h + 6 + math.ceil(panel.hint:GetStringHeight()) end
+    panel:SetHeight(h + PAD)
+end
+
+-- the item waiting on the cursor for a click on the ground, or nil
+local function setHint(link)
+    if link then
+        panel.hint:SetText(L.THROW_BY_HAND:format(link))
+        panel.hint:Show()
+    else
+        panel.hint:SetText("")
+        panel.hint:Hide()
+    end
+    layout()
+end
+
+local function onSlotClick(b)
+    local c, loot = b.item, panel.loot
+    if not c then return end
+    GameTooltip:Hide()
+    throwAway(c, true, function(result)
+        note("click: " .. result .. " " .. tostring(c.link))
+        if result == "ok" then
+            thrown(c, loot)
+        elseif result == "cursor" then
+            setHint(c.link or "?")
+        end
+    end)
+end
+
+local function createSlot(i)
+    local b = CreateFrame("Button", nil, panel)
+    b:SetSize(SLOT, SLOT)
+    b:SetPoint("TOPLEFT", panel.sub, "BOTTOMLEFT", (i - 1) * (SLOT + GAP), -6)
+    b.icon = b:CreateTexture(nil, "ARTWORK")
+    b.icon:SetAllPoints()
+    b.border = b:CreateTexture(nil, "OVERLAY")
+    b.border:SetTexture("Interface\\Common\\WhiteIconFrame")
+    b.border:SetAllPoints()
+    b:SetHighlightTexture("Interface\\Buttons\\ButtonHilight-Square", "ADD")
+    b.count = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    b.count:SetPoint("TOPRIGHT", -2, -2)
+    -- price on a dark strip along the bottom of the slot
+    b.strip = b:CreateTexture(nil, "OVERLAY")
+    b.strip:SetColorTexture(0, 0, 0, 0.7)
+    b.strip:SetPoint("BOTTOMLEFT", 2, 2)
+    b.strip:SetPoint("BOTTOMRIGHT", -2, 2)
+    b.strip:SetHeight(12)
+    b.price = b:CreateFontString(nil, "OVERLAY", "NumberFontNormalSmall")
+    b.price:SetPoint("BOTTOM", 0, 3)
+    b.price:SetTextColor(1, 1, 1)
+    b:SetScript("OnEnter", function(self)
+        if not self.item then return end
+        GameTooltip:SetOwner(self, "ANCHOR_RIGHT")
+        GameTooltip:SetBagItem(self.item.bag, self.item.slot)
+        GameTooltip:Show()
+    end)
+    b:SetScript("OnLeave", function() GameTooltip:Hide() end)
+    b:SetScript("OnClick", onSlotClick)
+    return b
+end
+
+local function createPanel()
+    local p = CreateFrame("Frame", "ForeverLootKeyRoomPanel", UIParent, "BackdropTemplate")
+    p:SetWidth(rowWidth(MAX_ROWS))
+    p:SetFrameStrata("DIALOG")
+    p:SetBackdrop({ bgFile = "Interface\\Tooltips\\UI-Tooltip-Background",
+                    edgeFile = "Interface\\Tooltips\\UI-Tooltip-Border",
+                    tile = true, tileSize = 16, edgeSize = 14, insets = { left = 3, right = 3, top = 3, bottom = 3 } })
+    p:SetBackdropColor(0, 0, 0, 0.9)
+    p.title = p:CreateFontString(nil, "OVERLAY", "GameFontNormal")
+    p.title:SetPoint("TOPLEFT", PAD, -9)
+    p.title:SetPoint("RIGHT", -24, 0)
+    p.title:SetJustifyH("LEFT")
+    p.title:SetText(L.THROW_BUTTON)
+    p.sub = p:CreateFontString(nil, "OVERLAY", "GameFontDisableSmall")
+    p.sub:SetPoint("TOPLEFT", p.title, "BOTTOMLEFT", 0, -3)
+    p.sub:SetPoint("RIGHT", -PAD, 0)
+    p.sub:SetJustifyH("LEFT")
+    p.hint = p:CreateFontString(nil, "OVERLAY", "GameFontHighlightSmall")
+    p.hint:SetPoint("TOPLEFT", p.sub, "BOTTOMLEFT", 0, -(6 + SLOT + 6))
+    p.hint:SetPoint("RIGHT", -PAD, 0)
+    p.hint:SetJustifyH("LEFT")
+    p.hint:Hide()
+    local close = CreateFrame("Button", nil, p, "UIPanelCloseButton")
+    close:SetSize(24, 24)
+    close:SetPoint("TOPRIGHT", -2, -2)
+    p.slots = {}
+    -- the item went back to the bag (right click, Escape): drop the hint
+    local elapsed = 0
+    p:SetScript("OnUpdate", function(self, e)
+        elapsed = elapsed + e
+        if elapsed < 0.2 then return end
+        elapsed = 0
+        if self.hint:IsShown() and GetCursorInfo() ~= "item" then setHint(nil) end
+    end)
+    p:Hide()
+    return p
+end
+
+local function showPanel(list, loot)
+    panel = panel or createPanel()
+    panel.loot = loot
+    -- as many slots as fit under the loot window (4 or 5), the panel as wide as the window
+    local rows, width = MAX_ROWS, rowWidth(MAX_ROWS)
+    local lootShown = LootFrame and LootFrame:IsShown()
+    if lootShown then
+        local w = LootFrame:GetWidth() or 0
+        while rows > MIN_ROWS and rowWidth(rows) > w do rows = rows - 1 end
+        width = math.max(rowWidth(rows), w)
+    end
+    panel:SetWidth(width)
+    panel.sub:SetText(L.THROW_FOR:format(loot.link or "?"))
+    for i = 1, MAX_ROWS do
+        local c = i <= rows and list[i] or nil
+        local b = panel.slots[i]
+        if c and not b then b = createSlot(i); panel.slots[i] = b end
+        if b then
+            b.item = c
+            if c then
+                b.icon:SetTexture(c.icon or 134400)
+                local cr, cg, cb = 1, 1, 1
+                if c.quality and C_Item.GetItemQualityColor then cr, cg, cb = C_Item.GetItemQualityColor(c.quality) end
+                b.border:SetVertexColor(cr, cg, cb)
+                b.count:SetText((c.count or 1) > 1 and c.count or "")
+                b.price:SetText(coins(c.value))
+                b:Show()
+            else
+                b:Hide()
+            end
+        end
+    end
+    if GetCursorInfo() == "item" then
+        local _, _, link = GetCursorInfo()
+        setHint(link or "?")
+    else
+        setHint(nil)
+    end
+    panel:ClearAllPoints()
+    if lootShown then
+        panel:SetPoint("TOPLEFT", LootFrame, "BOTTOMLEFT", 0, -6)
+    else
+        panel:SetPoint("CENTER", UIParent, "CENTER", 0, 160)
+    end
+    panel:Show()
+end
+
+makeRoom = function()
+    if not db.makeRoom or GetTime() < busyUntil then return end
+    if GetNumLootItems() == 0 or freeSlots() > 0 then
+        if panel then panel:Hide() end
+        return
+    end
     local loot = bestLoot()
     if not loot then return end
-    local junk = findJunk()
-    if not junk then return end
-    -- gray loot only pushes out cheaper gray junk
-    if not loot.quest and loot.quality == 0 and not (junk.gray and loot.value > junk.value) then return end
-    if not throwAway(junk) then return end
-    throws = throws + 1
-    say(L.THREW_AWAY:format(junk.link or "?", loot.link or "?"))
-    C_Timer.After(0.3, function()
-        if GetNumLootItems() >= loot.slot and LootSlotHasItem(loot.slot) then LootSlot(loot.slot) end
-        C_Timer.After(0.3, makeRoom)
+    local list = candidates()
+    if #list == 0 then
+        note("full, nothing to offer for " .. tostring(loot.link))
+        say(L.NO_JUNK)
+        return
+    end
+    -- on its own only junk goes (the cheapest), and only for loot worth more (quest, rolled and
+    -- green+ always)
+    local junk
+    for _, c in ipairs(list) do
+        if c.junk then junk = c; break end
+    end
+    local auto = junk and not db.deleteBlocked and throws < MAX_THROWS and (loot.must or loot.value > junk.value)
+    if not auto then
+        note("full, offered " .. #list .. " for " .. tostring(loot.link))
+        showPanel(list, loot)
+        return
+    end
+    busyUntil = GetTime() + 1
+    throwAway(junk, false, function(result)
+        note("auto: " .. result .. " " .. tostring(junk.link))
+        if result == "ok" then thrown(junk, loot); return end
+        busyUntil = 0
+        if GetNumLootItems() > 0 then showPanel(candidates(), loot) end
     end)
 end
 
@@ -293,11 +561,12 @@ local function onLootReady(autoLoot)
     if wanted == nil then
         wanted = GetCVarBool("autoLootDefault") ~= IsModifiedClick("AUTOLOOTTOGGLE")
     end
-    if not wanted then return end
-    for slot = GetNumLootItems(), 1, -1 do
-        LootSlot(slot)
+    if wanted then
+        for slot = GetNumLootItems(), 1, -1 do
+            LootSlot(slot)
+        end
     end
-    if db and db.makeRoom then
+    if db and db.makeRoom and now >= busyUntil then
         throws = 0
         C_Timer.After(0.3, makeRoom) -- whatever did not fit is still in the loot window
     end
@@ -306,9 +575,28 @@ end
 local frame = CreateFrame("Frame")
 frame:RegisterEvent("PLAYER_LOGIN")
 frame:RegisterEvent("LOOT_READY")
+frame:RegisterEvent("LOOT_CLOSED")
+frame:RegisterEvent("BAG_UPDATE_DELAYED")
 frame:SetScript("OnEvent", function(_, event, arg1)
     if event == "LOOT_READY" then
         onLootReady(arg1)
+        return
+    elseif event == "BAG_UPDATE_DELAYED" then
+        -- bags changed with the loot window open: a slot freed (you threw something on the
+        -- ground) takes the best loot left, then the list shows again if more is waiting
+        if db and db.makeRoom and GetNumLootItems() > 0 then
+            if freeSlots() > 0 and GetTime() >= busyUntil then
+                local loot = bestLoot()
+                if loot then
+                    note("room made, looting " .. tostring(loot.link))
+                    lootAgain(loot)
+                end
+            end
+            C_Timer.After(0.3, makeRoom)
+        end
+        return
+    elseif event == "LOOT_CLOSED" then
+        if panel then panel:Hide() end
         return
     end
     ForeverLootKeyDB = ForeverLootKeyDB or {}

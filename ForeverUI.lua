@@ -166,7 +166,9 @@ function Window:AddCheck(label, get, set, enabled)
         if type(r) == "table" and r.SetText then r:SetText("") end
     end
     local txt = cb:CreateFontString(nil, "OVERLAY", "GameFontHighlight")
-    txt:SetPoint("LEFT", cb, "RIGHT", 4, 0)
+    txt:SetPoint("TOPLEFT", cb, "TOPRIGHT", 4, -6)
+    txt:SetWidth(self.width - 16 - 24 - 4 - 16) -- long labels wrap inside the window
+    txt:SetJustifyH("LEFT")
     txt:SetText(label)
     cb:SetScript("OnClick", function(btn)
         set(btn:GetChecked() and true or false)
@@ -179,7 +181,7 @@ function Window:AddCheck(label, get, set, enabled)
         txt:SetTextColor(on and 1 or 0.5, on and 1 or 0.5, on and 1 or 0.5)
     end
     self.controls[#self.controls + 1] = cb
-    self.y = self.y - 26
+    self.y = self.y - math.max(26, math.ceil(txt:GetStringHeight()) + 14)
     return cb
 end
 
@@ -249,7 +251,7 @@ local FAMILY = {
       notes = "next spell to press, damage numbers on your buttons" },
     { name = "ForeverGear", title = "Forever Gear", url = "https://www.curseforge.com/wow/addons/forever-gear",
       notes = "green arrows on better gear in your bags" },
-    { name = "ForeverLootKey", title = "Forever LootKey", url = "https://www.curseforge.com/wow/addons/forever-lootkey",
+    { name = "ForeverLootKey", title = "Forever Loot", url = "https://www.curseforge.com/wow/addons/forever-lootkey",
       notes = "one key loots the nearest corpse, instant auto loot" },
 }
 

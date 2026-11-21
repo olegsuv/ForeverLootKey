@@ -1,5 +1,14 @@
 # Changelog
 
+## 1.3.1
+
+- Renamed to Forever Loot (same addon folder and settings, `/lootkey` still works).
+- Bags full: quest items, green or better (what you won on a roll) and bind-on-pickup loot always get room.
+- Bags full: the cheapest stack at the vendor goes, gray items and food / drink weaker than the best of its kind alike (the best food, the best drink and Well Fed food always stay). Gray and white loot only replaces cheaper junk.
+- Bags full with loot left: whenever the junk can't go on its own (the game refuses, there is no junk, or the loot isn't worth more), a row of 4-5 bag slots (no wider than the loot window) appears under it with items you could throw away, cheapest at the vendor first and one of each kind (five gray items show as the cheapest one, same for food, drink, cloth and so on; never quest items or things that can't be sold). Each slot shows the icon, quality, count and vendor price in coins, with the bag tooltip on hover; one click throws it away and loots. Where the game doesn't let addons delete items (Forever), the click puts the item on your cursor (a hint under the slots says so): click on the ground to throw it away and the loot is taken into the freed slot. The list stays while loot is still waiting, also when you loot by hand.
+- Bags full: an item is no longer put back by mistake while the game is still deleting it.
+- Long option labels wrap inside the settings window.
+
 ## 1.3.0
 
 - Optional, off by default: when your bags are full, auto loot throws away the least useful item so the new loot fits: the cheapest gray stack, else food / drink you carry 20+ better of (never Well Fed food). Gray loot only replaces cheaper gray junk. Settings: "Bags full: throw away gray junk or weak food/drink".

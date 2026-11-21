@@ -1,5 +1,5 @@
 ## Interface: 16001
-## Title: Forever LootKey
+## Title: Forever Loot
 ## Notes: One key loots the nearest corpse or quest object. Instant auto loot and a highlight on nearby interactable objects.
 ## Notes-ruRU: Одна клавиша лутает ближайший труп или квестовый предмет. Мгновенный автолут и подсветка объектов рядом.
 ## Author: olegsuv

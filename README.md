@@ -1,4 +1,4 @@
-# Forever LootKey
+# Forever Loot
 
 A small addon for **World of Warcraft: Forever**. Press one key and you loot the nearest corpse or pick up the nearest quest object. You don't have to aim, click or target anything.
 
